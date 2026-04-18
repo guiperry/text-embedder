@@ -25,7 +25,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/local/text-embedder/internal/embed"
+	"github.com/guiperry/text-embedder/embed"
 )
 
 // ---- request / response types -----------------------------------------------
@@ -238,10 +238,10 @@ func main() {
 	slog.SetDefault(logger)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/embed",      handleEmbed)
+	mux.HandleFunc("/embed", handleEmbed)
 	mux.HandleFunc("/embed/batch", handleBatch)
-	mux.HandleFunc("/similarity",  handleSimilarity)
-	mux.HandleFunc("/health",      handleHealth)
+	mux.HandleFunc("/similarity", handleSimilarity)
+	mux.HandleFunc("/health", handleHealth)
 
 	server := &http.Server{
 		Addr:         *addr,
