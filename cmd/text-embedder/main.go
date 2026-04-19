@@ -25,7 +25,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/guiperry/text-embedder/embed"
+	"github.com/guiperry/text-embedder/pkg/embed"
 )
 
 // ---- request / response types -----------------------------------------------
@@ -105,20 +105,6 @@ func decode(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
-func roughWordCount(text string) int {
-	count := 0
-	inWord := false
-	for _, r := range text {
-		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
-			inWord = false
-		} else if !inWord {
-			count++
-			inWord = true
-		}
-	}
-	return count
-}
-
 // ---- handlers ---------------------------------------------------------------
 
 func handleEmbed(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +121,7 @@ func handleEmbed(w http.ResponseWriter, r *http.Request) {
 		Embedding:  vec,
 		Dimensions: embed.Dims,
 		Model:      embed.ModelID,
-		TokenCount: roughWordCount(req.Text),
+		TokenCount: len(embed.Tokenize(req.Text)),
 	})
 }
 
@@ -162,7 +148,7 @@ func handleBatch(w http.ResponseWriter, r *http.Request) {
 			Index:      i,
 			Embedding:  embed.Embed(text),
 			Dimensions: embed.Dims,
-			TokenCount: roughWordCount(text),
+			TokenCount: len(embed.Tokenize(text)),
 		}
 	}
 	writeJSON(w, http.StatusOK, batchResponse{
