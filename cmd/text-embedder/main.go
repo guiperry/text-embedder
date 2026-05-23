@@ -35,10 +35,10 @@ type embedRequest struct {
 }
 
 type embedResponse struct {
-	Embedding  []float32 `json:"embedding"`
-	Dimensions int       `json:"dimensions"`
-	Model      string    `json:"model"`
-	TokenCount int       `json:"token_count"`
+	Embedding  []int32 `json:"embedding"`
+	Dimensions int     `json:"dimensions"`
+	Model      string  `json:"model"`
+	TokenCount int     `json:"token_count"`
 }
 
 type batchRequest struct {
@@ -46,10 +46,10 @@ type batchRequest struct {
 }
 
 type batchItem struct {
-	Index      int       `json:"index"`
-	Embedding  []float32 `json:"embedding"`
-	Dimensions int       `json:"dimensions"`
-	TokenCount int       `json:"token_count"`
+	Index      int     `json:"index"`
+	Embedding  []int32 `json:"embedding"`
+	Dimensions int     `json:"dimensions"`
+	TokenCount int     `json:"token_count"`
 }
 
 type batchResponse struct {

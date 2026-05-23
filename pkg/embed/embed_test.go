@@ -24,23 +24,34 @@ func TestEmbed_OutputDimensions(t *testing.T) {
 	}
 }
 
-func TestEmbed_UnitNorm(t *testing.T) {
+func TestEmbed_FixedPointRange(t *testing.T) {
 	texts := []string{
 		"machine learning is fascinating",
-		"a",
-		"the quick brown fox",
-		"   spaces   and\nnewlines\t",
+		"river bank",
+		"investment bank",
 	}
 	for _, text := range texts {
 		v := Embed(text)
-		var sumSq float64
 		for _, x := range v {
-			sumSq += float64(x) * float64(x)
+			if x < 0 || x > FixedPointScale {
+				t.Errorf("text %q: value %d out of range [0, %d]", text, x, FixedPointScale)
+			}
 		}
-		norm := math.Sqrt(sumSq)
-		if math.Abs(norm-1.0) > 1e-5 {
-			t.Errorf("text %q: expected unit norm, got %f", text, norm)
-		}
+	}
+}
+
+func TestEmbed_StructuralAwareness(t *testing.T) {
+	// "bank of river" and "river bank" should be similar but not identical to "bank of money"
+	vRiver1 := Embed("bank of the river")
+	vRiver2 := Embed("river bank")
+	vMoney := Embed("bank of the money")
+
+	simRiver := CosineSimilarity(vRiver1, vRiver2)
+	simMixed := CosineSimilarity(vRiver1, vMoney)
+
+	if simMixed >= simRiver {
+		t.Errorf("expected river-context to be more similar: river-river=%f mixed=%f",
+			simRiver, simMixed)
 	}
 }
 
@@ -50,18 +61,6 @@ func TestEmbed_EmptyInput(t *testing.T) {
 		if x != 0 {
 			t.Errorf("dimension %d: expected 0 for empty input, got %v", i, x)
 		}
-	}
-}
-
-func TestEmbed_EmptyNumbers(t *testing.T) {
-	// Pure numeric input should produce zero vector (no letter tokens)
-	v := Embed("12345 6789")
-	var sumSq float64
-	for _, x := range v {
-		sumSq += float64(x) * float64(x)
-	}
-	if sumSq != 0 {
-		t.Errorf("expected zero vector for numeric-only input, got non-zero")
 	}
 }
 

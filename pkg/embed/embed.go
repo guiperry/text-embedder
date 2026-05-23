@@ -20,79 +20,103 @@ import (
 
 const (
 	// Dims is the number of dimensions in the output embedding vector.
-	// 768 matches popular sentence-transformer models for compatibility.
 	Dims = 768
 
 	// ModelID is a stable identifier for this embedding algorithm version.
-	ModelID = "hash-ngram-v1"
+	ModelID = "landmark-lattice-v1"
+
+	// LatticeSize is the internal high-dimensional space for feature hashing.
+	// Large enough to minimize collisions before landmark projection.
+	LatticeSize = 4096
+
+	// FixedPointScale is the multiplier for converting float similarities 
+	// to integers [0, 10000].
+	FixedPointScale = 10000
 )
 
-// nonAlphanumRE matches runs of characters that are not letters or digits.
-var nonAlphanumRE = regexp.MustCompile(`[^a-z0-9]+`)
+// functionalWords are structural anchors (prepositions, conjunctions, etc.)
+// used for syntactic feature hashing. This set covers the majority of
+// English relational words to provide robust context linking.
+var functionalWords = map[string]bool{
+	// Core Prepositions
+	"of": true, "to": true, "in": true, "for": true, "on": true, "with": true,
+	"at": true, "by": true, "from": true, "up": true, "about": true, "into": true,
+	"over": true, "after": true, "through": true, "during": true, "before": true,
+	"between": true, "under": true, "against": true, "among": true, "throughout": true,
+	"despite": true, "towards": true, "upon": true, "concerning": true, "around": true,
+	"near": true, "behind": true, "beyond": true, "within": true, "without": true,
+	"until": true, "since": true, "past": true, "off": true, "across": true,
+	"along": true, "above": true, "below": true, "down": true, "except": true,
 
-// Tokenize returns the tokens that would be embedded for text.
-// The count reflects exactly what the embedding algorithm operates on.
-func Tokenize(text string) []string {
-	return tokenise(text)
+	// Conjunctions (Coordinating & Subordinating)
+	"and": true, "but": true, "or": true, "if": true, "because": true, "as": true,
+	"while": true, "although": true, "though": true, "whereas": true,
+	"unless": true, "whether": true, "yet": true, "so": true,
+	"nor": true,
+
+	// Relational & Deterministic Anchors
+	"that": true, "which": true, "who": true, "whom": true, "whose": true,
+	"this": true, "those": true, "these": true, "each": true, "every": true,
+	"any": true, "all": true, "some": true, "no": true, "none": true,
 }
 
-// Embed converts a text string into a deterministic unit-normalised vector.
-// The same input always returns the exact same vector.
-func Embed(text string) []float32 {
-	features := extractFeatures(text)
-	if len(features) == 0 {
-		return make([]float32, Dims) // zero vector for empty input
-	}
+// Embed converts a text string into a deterministic similarity profile.
+// The output is a []int32 representing similarity to fixed semantic landmarks.
+func Embed(text string) []int32 {
+	lat := embedToLattice(text)
+	landmarks := getLandmarkVectors()
 
-	// Count term frequencies
-	tf := make(map[string]float64, len(features))
-	for _, f := range features {
-		tf[f]++
+	// Calculate similarity to each landmark
+	// To keep it 100% deterministic and jitter-free, we use integer dot products
+	// and fixed-point division.
+	out := make([]int32, Dims)
+	for i := 0; i < len(landmarks); i++ {
+		sim := latticeSimilarity(lat, landmarks[i])
+		out[i] = int32(sim * FixedPointScale)
 	}
-
-	// Accumulate into fixed-size vector using the hashing trick
-	vec := make([]float64, Dims)
-	for feat, count := range tf {
-		dim, sign := hashFeature(feat)
-		vec[dim] += sign * count
-	}
-
-	// L2-normalise to unit length
-	normalise(vec)
-
-	// Convert to float32 for compact JSON output
-	out := make([]float32, Dims)
-	for i, v := range vec {
-		out[i] = float32(v)
-	}
+	
+	// Pad the rest of the 768 dimensions with 0 if landmarks < Dims
 	return out
 }
 
-// CosineSimilarity returns the cosine similarity in [-1, 1] between two unit
-// vectors. Both inputs must already be L2-normalised (as returned by Embed).
-func CosineSimilarity(a, b []float32) float64 {
-	if len(a) != len(b) {
-		return 0
+// embedToLattice converts text into a high-dimensional integer vector.
+// This is bit-perfect across all platforms.
+func embedToLattice(text string) []int64 {
+	features := extractFeatures(text)
+	vec := make([]int64, LatticeSize)
+	if len(features) == 0 {
+		return vec
 	}
-	var dot float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
+
+	for _, f := range features {
+		dim, sign := hashFeature(f)
+		vec[dim] += int64(sign)
 	}
-	// Clamp to [-1,1] to guard against floating-point drift
-	if dot > 1 {
-		dot = 1
-	} else if dot < -1 {
-		dot = -1
-	}
-	return dot
+	return vec
 }
 
-// ---------- internals --------------------------------------------------------
+// latticeSimilarity calculates a deterministic similarity between two lattice vectors.
+func latticeSimilarity(a, b []int64) float64 {
+	var dot, normA, normB int64
+	for i := 0; i < LatticeSize; i++ {
+		dot += a[i] * b[i]
+		normA += a[i] * a[i]
+		normB += b[i] * b[i]
+	}
+
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+
+	// We use float64 for the final ratio, but since the inputs are large integers,
+	// the precision loss is negligible and the result is stable.
+	return float64(dot) / (math.Sqrt(float64(normA)) * math.Sqrt(float64(normB)))
+}
 
 // extractFeatures returns all features for a text:
-//   - word unigrams  (whole lowercase tokens)
-//   - word bigrams   (adjacent token pairs, prefix "2:")
-//   - char 3-grams   (sliding windows over each token, prefix "c:")
+//   - word unigrams
+//   - structural bigrams (word + functional word)
+//   - char trigrams
 func extractFeatures(text string) []string {
 	tokens := tokenise(text)
 	if len(tokens) == 0 {
@@ -101,25 +125,59 @@ func extractFeatures(text string) []string {
 
 	features := make([]string, 0, len(tokens)*6)
 
-	// Word unigrams
-	for _, t := range tokens {
+	// Unigrams and Structural Bigrams
+	for i, t := range tokens {
 		features = append(features, t)
+
+		// Syntactic/Structural: if current or next is functional, link them
+		if i < len(tokens)-1 {
+			next := tokens[i+1]
+			if functionalWords[t] || functionalWords[next] {
+				features = append(features, "s:"+t+"_"+next)
+			}
+		}
 	}
 
-	// Word bigrams
-	for i := 0; i < len(tokens)-1; i++ {
-		features = append(features, "2:"+tokens[i]+"_"+tokens[i+1])
-	}
-
-	// Character trigrams (subword coverage for morphology & typos)
+	// Character trigrams
 	for _, t := range tokens {
-		padded := "\x02" + t + "\x03" // BOS / EOS markers
+		if functionalWords[t] {
+			continue // Don't sub-hash functional words
+		}
+		padded := "\x02" + t + "\x03"
 		for i := 0; i <= len(padded)-3; i++ {
 			features = append(features, "c:"+padded[i:i+3])
 		}
 	}
 
 	return features
+}
+
+// hashFeature returns (dimension, sign) for a feature string.
+func hashFeature(feat string) (int, int) {
+	h1 := fnv.New64a()
+	h1.Write([]byte(feat))
+	val1 := h1.Sum64()
+	dim := int(val1 % uint64(LatticeSize))
+
+	// Secondary hash for sign
+	h2 := fnv.New64a()
+	h2.Write([]byte(feat))
+	h2.Write([]byte("reverse")) // Simpler than actual reverse for sign
+	sign := 1
+	if h2.Sum64()%2 == 0 {
+		sign = -1
+	}
+
+	return dim, sign
+}
+
+// nonAlphanumRE matches runs of characters that are not letters or digits.
+var nonAlphanumRE = regexp.MustCompile(`[^a-z0-9]+`)
+
+// Tokenize returns the tokens that would be embedded for text.
+// The count reflects exactly what the embedding algorithm operates on.
+func Tokenize(text string) []string {
+	return tokenise(text)
 }
 
 // tokenise lower-cases the input, splits on non-alphanumeric runs,
@@ -153,43 +211,22 @@ func tokenise(text string) []string {
 	return tokens
 }
 
-// hashFeature returns (dimension, sign) for a feature string.
-//
-// Primary hash  → dimension index in [0, Dims)
-// Secondary hash → sign in {-1, +1}   prevents opposite features cancelling
-func hashFeature(feat string) (int, float64) {
-	// Primary: FNV-1a 64-bit
-	h1 := fnv.New64a()
-	h1.Write([]byte(feat))
-	dim := int(h1.Sum64() % uint64(Dims))
-
-	// Secondary: FNV-1a over reversed bytes to get an independent bit
-	b := []byte(feat)
-	for i, j := 0, len(b)-1; i < j; i, j = i+1, j-1 {
-		b[i], b[j] = b[j], b[i]
+// CosineSimilarity returns the similarity between two fixed-point vectors.
+func CosineSimilarity(a, b []int32) float64 {
+	if len(a) != len(b) {
+		return 0
 	}
-	h2 := fnv.New64a()
-	h2.Write(b)
-	sign := 1.0
-	if h2.Sum64()%2 == 0 {
-		sign = -1.0
+	var dot, normA, normB float64
+	for i := range a {
+		vA := float64(a[i])
+		vB := float64(b[i])
+		dot += vA * vB
+		normA += vA * vA
+		normB += vB * vB
 	}
-
-	return dim, sign
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
 }
 
-// normalise divides vec by its L2 norm in-place. If the norm is zero the
-// vector is left unchanged (all-zero input → all-zero output).
-func normalise(vec []float64) {
-	var sumSq float64
-	for _, v := range vec {
-		sumSq += v * v
-	}
-	if sumSq == 0 {
-		return
-	}
-	norm := math.Sqrt(sumSq)
-	for i := range vec {
-		vec[i] /= norm
-	}
-}

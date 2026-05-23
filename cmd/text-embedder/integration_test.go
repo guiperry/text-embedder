@@ -89,7 +89,7 @@ func TestHandleEmbed_BadJSON(t *testing.T) {
 
 func TestHandleDeterministic(t *testing.T) {
 	text := `{"text": "determinism test sentence"}`
-	call := func() []float32 {
+	call := func() []int32 {
 		req := httptest.NewRequest(http.MethodPost, "/embed", bytes.NewBufferString(text))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
