@@ -72,10 +72,12 @@ func Embed(text string) []int32 {
 	out := make([]int32, Dims)
 	for i := 0; i < len(landmarks); i++ {
 		sim := latticeSimilarity(lat, landmarks[i])
-		out[i] = int32(sim * FixedPointScale)
+		v := int32(sim * FixedPointScale)
+		if v < 0 {
+			v = 0
+		}
+		out[i] = v
 	}
-	
-	// Pad the rest of the 768 dimensions with 0 if landmarks < Dims
 	return out
 }
 
