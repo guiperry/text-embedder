@@ -22,11 +22,17 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/guiperry/text-embedder/pkg/embed"
 )
+
+// batchWorkers is the max concurrent embedding goroutines for /embed/batch.
+// Set via --workers flag; defaults to GOMAXPROCS.
+var batchWorkers int
 
 // ---- request / response types -----------------------------------------------
 
@@ -142,15 +148,30 @@ func handleBatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "batch size exceeds limit of 256")
 		return
 	}
+
 	results := make([]batchItem, len(req.Texts))
+	var wg sync.WaitGroup
+
+	// Semaphore bounding concurrent workers so we don't swamp the CPU.
+	sem := make(chan struct{}, batchWorkers)
+
 	for i, text := range req.Texts {
-		results[i] = batchItem{
-			Index:      i,
-			Embedding:  embed.Embed(text),
-			Dimensions: embed.Dims,
-			TokenCount: len(embed.Tokenize(text)),
-		}
+		wg.Add(1)
+		go func(idx int, txt string) {
+			defer wg.Done()
+			sem <- struct{}{} // acquire
+			defer func() { <-sem }() // release
+
+			results[idx] = batchItem{
+				Index:      idx,
+				Embedding:  embed.Embed(txt),
+				Dimensions: embed.Dims,
+				TokenCount: len(embed.Tokenize(txt)),
+			}
+		}(i, text)
 	}
+
+	wg.Wait()
 	writeJSON(w, http.StatusOK, batchResponse{
 		Results: results,
 		Model:   embed.ModelID,
@@ -216,7 +237,13 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 func main() {
 	addr := flag.String("addr", ":8089", "listen address")
+	workers := flag.Int("workers", runtime.GOMAXPROCS(0), "max concurrent batch workers (0 = GOMAXPROCS)")
 	flag.Parse()
+
+	batchWorkers = *workers
+	if batchWorkers <= 0 {
+		batchWorkers = runtime.GOMAXPROCS(0)
+	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -242,6 +269,7 @@ func main() {
 			"addr", *addr,
 			"model", embed.ModelID,
 			"dims", embed.Dims,
+			"batch_workers", batchWorkers,
 		)
 		fmt.Printf("\ntext-embedder running on http://localhost%s\n\n", *addr)
 		fmt.Println("  POST /embed           – embed a single text")

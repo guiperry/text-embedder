@@ -29,7 +29,8 @@ Traditional neural network embeddings (OpenAI, BERT, etc.) face three fundamenta
 
 ```bash
 go build -o embedder ./cmd/text-embedder
-./embedder              # listens on :8089 by default
+./embedder              # listens on :8089, workers=GOMAXPROCS
+./embedder --workers=4  # limit concurrency, or --workers=1 for sequential
 ```
 
 ## Using as a Go module
@@ -80,3 +81,41 @@ Returns a 768-dimensional `int32` vector.
   "token_count": 4
 }
 ```
+
+### `POST /embed/batch`
+Embeds up to 256 texts in a single request. Processing is **parallelized internally** using a bounded worker pool — each text runs in its own goroutine, and results are written by index so response order matches request order.
+
+```json
+// Request
+{ "texts": ["first text", "second text", "third text"] }
+
+// Response
+{
+  "results": [
+    { "index": 0, "embedding": [942, 104, ...], "dimensions": 768, "token_count": 2 },
+    { "index": 1, "embedding": [514, 308, ...], "dimensions": 768, "token_count": 2 },
+    { "index": 2, "embedding": [720, 211, ...], "dimensions": 768, "token_count": 2 }
+  ],
+  "model": "landmark-lattice-v1",
+  "count": 3
+}
+```
+
+Concurrency defaults to `GOMAXPROCS` (number of logical CPUs) and is tunable with `--workers`:
+
+| `--workers` | Usage | Effect |
+|:------------|:------|:-------|
+| `0` (or omit) | `./embedder` | Uses `GOMAXPROCS` — optimal for CPU-bound work |
+| `1` | `./embedder --workers=1` | Sequential processing (one text at a time) |
+| `4` | `./embedder --workers=4` | Up to 4 concurrent embeddings |
+| `N` | `./embedder --workers=N` | Up to N concurrent embeddings |
+
+**Benchmark** (i7-950, 8 threads, 100 texts, 768 dims):
+
+| Mode | Server-side time |
+|:-----|:-----------------|
+| Sequential (--workers=1) | ~2,200 ms (all in Embed computation) |
+| Parallel (--workers=8) | ~279 ms (275 ms Embed + ~4 ms JSON encode) |
+| **Speedup** | **~7.9x** |
+
+> JSON serialization is negligible (~4 ms for 100 items = 77K int32 values). The parallel speedup applies directly to the compute-bound Embed() calls. The ~8x figure matches `GOMAXPROCS` on an i7-950 (8 threads).
