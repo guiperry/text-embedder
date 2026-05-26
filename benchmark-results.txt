@@ -1,0 +1,93 @@
+text-embedder benchmark report
+==============================
+
+CPU:    Intel(R) Core(TM) i7 CPU 950 @ 3.07GHz
+Cores:  8
+Date:   2026-05-26 02:38:10 UTC
+Iterations per benchmark: 5
+
+
+1. Sequential baseline (--workers=1)
+===================================
+
+1. Sequential baseline (--workers=1)
+────────────────────────────────────
+BenchmarkBatchHandler_workers_1-8   	       5	3583486723 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	22.787s
+
+2. Worker scaling — batch=128 texts
+===================================
+
+  workers=2
+───────────
+BenchmarkBatchHandler_workers_2-8   	       5	1624345563 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	11.120s
+
+  workers=4
+───────────
+BenchmarkBatchHandler_workers_4-8   	       5	 931402927 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	6.907s
+
+  workers=8
+───────────
+BenchmarkBatchHandler_workers_8-8   	       5	 898351020 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	6.852s
+
+3. Batch sizes (workers=default)
+================================
+
+  single (1 text)
+─────────────────
+BenchmarkBatchHandler_single-8   	       5	  21149730 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	1.556s
+
+  small (16 texts)
+──────────────────
+BenchmarkBatchHandler_smallBatch-8   	       5	 119717483 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	2.302s
+
+  provider (128)
+────────────────
+BenchmarkBatchHandler_providerBatchSize-8   	       5	 867302118 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	6.739s
+
+  max (256 texts)
+─────────────────
+BenchmarkBatchHandler_maxBatch-8   	       5	1730363042 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	11.913s
+
+4. Concurrent callers (batch=128 each, workers=default)
+========================================================
+
+  1 caller
+──────────
+BenchmarkBatchHandler_concurrent/callers=1-8         	       5	 893053270 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	7.577s
+
+  2 callers
+───────────
+BenchmarkBatchHandler_concurrent/callers=2-8         	       5	1795603345 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	12.326s
+
+  4 callers
+───────────
+BenchmarkBatchHandler_concurrent/callers=4-8         	       5	3890403849 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	25.023s
+
+5. JSON serialization (batch response encode)
+==============================================
+
+  n=16
+──────
+BenchmarkBatchJSON/n=16-8         	       5	    516546 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	1.508s
+
+  n=128
+───────
+BenchmarkBatchJSON/n=128-8         	       5	   5158779 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	1.501s
+
+  n=256
+───────
+BenchmarkBatchJSON/n=256-8         	       5	  12228470 ns/op
+ok  	github.com/guiperry/text-embedder/cmd/text-embedder	1.598s

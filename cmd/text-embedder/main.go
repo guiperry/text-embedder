@@ -152,8 +152,14 @@ func handleBatch(w http.ResponseWriter, r *http.Request) {
 	results := make([]batchItem, len(req.Texts))
 	var wg sync.WaitGroup
 
+	// Fall back to GOMAXPROCS when not set (e.g. in tests that skip main())
+	workers := batchWorkers
+	if workers <= 0 {
+		workers = runtime.GOMAXPROCS(0)
+	}
+
 	// Semaphore bounding concurrent workers so we don't swamp the CPU.
-	sem := make(chan struct{}, batchWorkers)
+	sem := make(chan struct{}, workers)
 
 	for i, text := range req.Texts {
 		wg.Add(1)
