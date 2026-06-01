@@ -1,4 +1,4 @@
-.PHONY: build test bench run clean compress deploy deploy-all
+.PHONY: build test bench vet run clean compress deploy deploy-all
 
 BIN := embedder
 ADDR ?= :8089
@@ -18,7 +18,11 @@ test:
 	go test ./... -v
 
 bench:
-	go test ./internal/embed/... -bench=. -benchmem -count=3
+	go test ./pkg/embed/... -bench=. -benchmem -count=3
+	go test ./cmd/text-embedder/... -bench=. -benchmem -count=1
+
+vet:
+	go vet ./...
 
 run: build
 	./$(BIN) --addr $(ADDR)

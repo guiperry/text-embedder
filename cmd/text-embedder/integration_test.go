@@ -8,21 +8,25 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	api "github.com/guiperry/text-embedder/internal/api"
 )
 
 // newTestServer spins up a real TCP server on a random free port and returns
 // its base URL. The caller's t.Cleanup closes it.
-func newTestServer(t *testing.T) string {
+func newTestServer(t *testing.T, workers int) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/embed", handleEmbed)
-	mux.HandleFunc("/embed/batch", handleBatch)
-	mux.HandleFunc("/similarity", handleSimilarity)
-	mux.HandleFunc("/health", handleHealth)
+	mux.HandleFunc("/embed", api.HandleEmbed)
+	mux.HandleFunc("/embed/batch", func(w http.ResponseWriter, r *http.Request) {
+		api.HandleBatch(w, r, workers)
+	})
+	mux.HandleFunc("/similarity", api.HandleSimilarity)
+	mux.HandleFunc("/health", api.HandleHealth)
 	srv := &http.Server{Handler: mux}
 	go srv.Serve(ln)
 	t.Cleanup(func() { srv.Close() })
@@ -51,12 +55,12 @@ func TestHandleEmbed_Basic(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/embed", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	handleEmbed(w, req)
+	api.HandleEmbed(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	var resp embedResponse
+	var resp api.EmbedResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +75,7 @@ func TestHandleEmbed_Basic(t *testing.T) {
 func TestHandleEmbed_WrongMethod(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/embed", nil)
 	w := httptest.NewRecorder()
-	handleEmbed(w, req)
+	api.HandleEmbed(w, req)
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", w.Code)
 	}
@@ -81,7 +85,7 @@ func TestHandleEmbed_BadJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/embed", bytes.NewBufferString(`{bad`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	handleEmbed(w, req)
+	api.HandleEmbed(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", w.Code)
 	}
@@ -93,8 +97,8 @@ func TestHandleDeterministic(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/embed", bytes.NewBufferString(text))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
-		handleEmbed(w, req)
-		var resp embedResponse
+		api.HandleEmbed(w, req)
+		var resp api.EmbedResponse
 		json.Unmarshal(w.Body.Bytes(), &resp)
 		return resp.Embedding
 	}
@@ -111,9 +115,9 @@ func TestHandleSimilarity_RelatedHigher(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/similarity", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	handleSimilarity(w, req)
+	api.HandleSimilarity(w, req)
 
-	var resp similarityResponse
+	var resp api.SimilarityResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Similarity <= 0 {
 		t.Errorf("expected positive similarity between related topics, got %f", resp.Similarity)
@@ -125,9 +129,9 @@ func TestHandleBatch_Count(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/embed/batch", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	handleBatch(w, req)
+	api.HandleBatch(w, req, 4)
 
-	var resp batchResponse
+	var resp api.BatchResponse
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Count != 3 {
 		t.Errorf("expected count=3, got %d", resp.Count)
@@ -144,7 +148,7 @@ func TestHandleBatch_Empty(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/embed/batch", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	handleBatch(w, req)
+	api.HandleBatch(w, req, 4)
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for empty batch, got %d", w.Code)
 	}
@@ -153,7 +157,7 @@ func TestHandleBatch_Empty(t *testing.T) {
 // ---- live TCP server tests --------------------------------------------------
 
 func TestLiveServer_Health(t *testing.T) {
-	base := newTestServer(t)
+	base := newTestServer(t, 4)
 	resp, err := http.Get(base + "/health")
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +166,7 @@ func TestLiveServer_Health(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	var h healthResponse
+	var h api.HealthResponse
 	json.NewDecoder(resp.Body).Decode(&h)
 	if h.Status != "ok" {
 		t.Errorf("status=%q, want ok", h.Status)
@@ -171,10 +175,10 @@ func TestLiveServer_Health(t *testing.T) {
 }
 
 func TestLiveServer_EmbedDeterministic(t *testing.T) {
-	base := newTestServer(t)
+	base := newTestServer(t, 4)
 	body := `{"text":"testing determinism over the network"}`
 
-	var r1, r2 embedResponse
+	var r1, r2 api.EmbedResponse
 	json.Unmarshal(postJSON(t, base+"/embed", body), &r1)
 	json.Unmarshal(postJSON(t, base+"/embed", body), &r2)
 
@@ -187,7 +191,7 @@ func TestLiveServer_EmbedDeterministic(t *testing.T) {
 }
 
 func TestLiveServer_SimilarityEndToEnd(t *testing.T) {
-	base := newTestServer(t)
+	base := newTestServer(t, 4)
 
 	cases := []struct {
 		a, b    string
@@ -201,7 +205,7 @@ func TestLiveServer_SimilarityEndToEnd(t *testing.T) {
 
 	for _, c := range cases {
 		body := fmt.Sprintf(`{"text_a":%q,"text_b":%q}`, c.a, c.b)
-		var sr similarityResponse
+		var sr api.SimilarityResponse
 		json.Unmarshal(postJSON(t, base+"/similarity", body), &sr)
 		fmt.Printf("  %s → %.4f\n", c.label, sr.Similarity)
 
@@ -212,11 +216,11 @@ func TestLiveServer_SimilarityEndToEnd(t *testing.T) {
 }
 
 func TestLiveServer_BatchIndexOrder(t *testing.T) {
-	base := newTestServer(t)
+	base := newTestServer(t, 4)
 	texts := []string{"alpha", "beta", "gamma", "delta"}
 	body := `{"texts":["alpha","beta","gamma","delta"]}`
 
-	var br batchResponse
+	var br api.BatchResponse
 	json.Unmarshal(postJSON(t, base+"/embed/batch", body), &br)
 
 	if br.Count != len(texts) {

@@ -25,13 +25,42 @@ Traditional neural network embeddings (OpenAI, BERT, etc.) face three fundamenta
 
 ---
 
-## Quick start
+## Deployment modes
+
+text-embedder runs in two modes:
+
+| Mode | How | When to use |
+|:-----|:----|:------------|
+| **Local binary** | `go build` → `./embedder` | Dev, self-host, CI pipelines |
+| **Vercel serverless** | `vercel deploy` | Serverless API, zero-ops, auto-scale |
+
+### Local binary
 
 ```bash
 go build -o embedder ./cmd/text-embedder
 ./embedder              # listens on :8089, workers=GOMAXPROCS
 ./embedder --workers=4  # limit concurrency, or --workers=1 for sequential
 ```
+
+### Vercel
+
+```bash
+# Install Vercel CLI if you haven't already
+npm i -g vercel
+
+# Deploy (Vercel detects Go handlers in api/ automatically)
+vercel deploy --prod
+```
+
+The deployment uses the same `internal/api` handlers as the local binary, wrapped in light Vercel `http.HandlerFunc` shims (`api/embed/index.go`, `api/health/index.go`, etc.). CORS, body-size limits, and OPTIONS preflight are handled per-endpoint.
+
+**Serverless limits:**
+
+| Constraint | Hobby | Pro |
+|:-----------|:------|:----|
+| Batch size | 128 texts | 128 texts |
+| Function timeout | 10 s | 60 s |
+| Body size | 1 MB | 1 MB |
 
 ## Using as a Go module
 
@@ -52,6 +81,37 @@ sim := embed.CosineSimilarity(a, b) // returns float64 in [0, 1]
 ```
 
 ---
+
+## Project structure
+
+```
+├── pkg/embed/              # Core embedding library (zero deps)
+│   └── embed.go            #   embed.Embed(), embed.CosineSimilarity()
+├── internal/api/           # Shared HTTP handlers + helpers
+│   ├── helpers.go          #   ServeHTTP handlers, types, CORS, writeJSON
+│   └── helpers_test.go
+├── api/                    # Vercel serverless entry points
+│   ├── embed/
+│   │   ├── index.go        #   POST /embed
+│   │   └── index_test.go
+│   │   └── batch/
+│   │       ├── index.go    #   POST /embed/batch
+│   │       └── index_test.go
+│   ├── similarity/
+│   │   ├── index.go        #   POST /similarity
+│   │   └── index_test.go
+│   └── health/
+│       ├── index.go        #   GET /health
+│       └── index_test.go
+├── cmd/text-embedder/      # Local binary (wraps internal/api)
+│   ├── main.go
+│   ├── main_test.go
+│   └── integration_test.go
+├── public/
+│   └── index.html          # API documentation landing page (Vercel)
+├── vercel.json             # Vercel routing + CORS + timeout config
+└── Makefile                # build / test / bench / vet / deploy
+```
 
 ## Algorithm: `landmark-lattice-v1`
 
@@ -83,7 +143,7 @@ Returns a 768-dimensional `int32` vector.
 ```
 
 ### `POST /embed/batch`
-Embeds up to 256 texts in a single request. Processing is **parallelized internally** using a bounded worker pool — each text runs in its own goroutine, and results are written by index so response order matches request order.
+Embeds up to 256 texts (128 on Vercel serverless) in a single request. Processing is **parallelized internally** using a bounded worker pool — each text runs in its own goroutine, and results are written by index so response order matches request order.
 
 ```json
 // Request

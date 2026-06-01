@@ -15,6 +15,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -60,11 +61,26 @@ var functionalWords = map[string]bool{
 	"any": true, "all": true, "some": true, "no": true, "none": true,
 }
 
+// sync.Once cache for landmark vectors — computed once per process lifetime.
+// Catastrophic for cold-start latency on batch requests without this: a batch of
+// 256 texts would recompute 256 × 768 = 196,608 landmark vectorizations.
+var (
+	landmarkOnce    sync.Once
+	landmarkVectors [][]int64
+)
+
+func cachedLandmarkVectors() [][]int64 {
+	landmarkOnce.Do(func() {
+		landmarkVectors = getLandmarkVectors()
+	})
+	return landmarkVectors
+}
+
 // Embed converts a text string into a deterministic similarity profile.
 // The output is a []int32 representing similarity to fixed semantic landmarks.
 func Embed(text string) []int32 {
 	lat := embedToLattice(text)
-	landmarks := getLandmarkVectors()
+	landmarks := cachedLandmarkVectors()
 
 	// Calculate similarity to each landmark
 	// To keep it 100% deterministic and jitter-free, we use integer dot products

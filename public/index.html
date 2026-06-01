@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>text-embedder API</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222637;
+      --border: #2e3250;
+      --accent: #6c8cff;
+      --accent2: #a78bfa;
+      --green: #34d399;
+      --text: #e2e8f0;
+      --muted: #8892b0;
+      --code-bg: #141821;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text);
+      background: var(--bg);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { padding: 2rem 1rem; }
+    .page { max-width: 960px; margin: 0 auto; }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    header h1 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    header .meta { color: var(--muted); font-size: 0.85rem; margin-top: 0.4rem; }
+    section { margin-bottom: 2.5rem; }
+    h2 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: var(--accent);
+      border-left: 3px solid var(--accent);
+      padding-left: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    h3 { font-size: 1rem; font-weight: 600; color: var(--accent2); margin: 1.25rem 0 0.5rem; }
+    p { margin-bottom: 0.8rem; }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      margin: 0.75rem 0 1rem;
+      font-size: 0.82rem;
+      line-height: 1.55;
+    }
+    code {
+      font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+    }
+    p code, li code {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1em 0.4em;
+      font-size: 0.82em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      margin: 1rem 0;
+    }
+    th {
+      text-align: left;
+      padding: 0.6rem 0.9rem;
+      background: var(--surface2);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+    }
+    td {
+      padding: 0.6rem 0.9rem;
+      border-top: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tr:nth-child(even) td { background: var(--surface); }
+    ul, ol { padding-left: 1.5rem; margin-bottom: 0.8rem; }
+    li { margin-bottom: 0.3rem; color: var(--muted); }
+    li strong { color: var(--text); }
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      background: #1e1b4b;
+      color: var(--accent2);
+    }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>text-embedder</h1>
+  <div class="meta">
+    model <code>landmark-lattice-v1</code> &nbsp;·&nbsp; 768-dim int32 embeddings &nbsp;·&nbsp;
+    deterministic &amp; zero-dependency
+  </div>
+</header>
+
+<section>
+  <h2>What it is</h2>
+  <p>
+    text-embedder converts text into <strong>768-dimensional deterministic
+    integer vectors</strong> using the Landmark Lattice architecture — a
+    pure feature-hashing algorithm with <em>no ML models, no GPUs, and no
+    external dependencies</em>. The same input always produces the same
+    output, across every CPU architecture and every software version.
+    Model ID: <code>landmark-lattice-v1</code>.
+  </p>
+</section>
+
+<section>
+  <h2>Endpoints</h2>
+  <table>
+    <thead>
+      <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>POST</td><td><code>/embed</code></td><td>Embed a single text</td></tr>
+      <tr><td>POST</td><td><code>/embed/batch</code></td><td>Embed up to 128 texts</td></tr>
+      <tr><td>POST</td><td><code>/similarity</code></td><td>Cosine similarity between two texts</td></tr>
+      <tr><td>GET</td><td><code>/health</code></td><td>Liveness check with model metadata</td></tr>
+    </tbody>
+  </table>
+
+  <h3>POST /embed</h3>
+  <p>Request:</p>
+  <pre><code>{ "text": "your text here" }</code></pre>
+  <p>Response:</p>
+  <pre><code>{
+  "embedding": [942, 104, 3922, ...],
+  "dimensions": 768,
+  "model": "landmark-lattice-v1",
+  "token_count": 4
+}</code></pre>
+
+  <h3>POST /embed/batch</h3>
+  <p>Request:</p>
+  <pre><code>{ "texts": ["first text", "second text", "third text"] }</code></pre>
+  <p>Response:</p>
+  <pre><code>{
+  "results": [
+    { "index": 0, "embedding": [942, ...], "dimensions": 768, "token_count": 2 },
+    { "index": 1, "embedding": [514, ...], "dimensions": 768, "token_count": 2 }
+  ],
+  "model": "landmark-lattice-v1",
+  "count": 2
+}</code></pre>
+
+  <h3>POST /similarity</h3>
+  <p>Request:</p>
+  <pre><code>{ "text_a": "first text", "text_b": "second text" }</code></pre>
+  <p>Response:</p>
+  <pre><code>{ "similarity": 0.7737, "model": "landmark-lattice-v1" }</code></pre>
+</section>
+
+<section>
+  <h2>Response field glossary</h2>
+  <table>
+    <thead>
+      <tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>embedding</code></td><td><code>[]int32</code></td>
+        <td>768-element fixed-point vector, each element in <code>[0, 10000]</code></td></tr>
+      <tr><td><code>dimensions</code></td><td><code>int</code></td>
+        <td>Always 768</td></tr>
+      <tr><td><code>token_count</code></td><td><code>int</code></td>
+        <td>Number of tokens the input was split into (words + subword features)</td></tr>
+      <tr><td><code>model</code></td><td><code>string</code></td>
+        <td>Model identifier: <code>landmark-lattice-v1</code></td></tr>
+      <tr><td><code>similarity</code></td><td><code>float64</code></td>
+        <td>Cosine similarity in <code>[0, 1]</code> — how related two texts are</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Curl examples</h2>
+  <pre><code># Single embed
+curl -X POST https://your-deployment.vercel.app/embed \
+  -H "Content-Type: application/json" \
+  -d '{"text":"the quick brown fox"}'
+
+# Batch embed
+curl -X POST https://your-deployment.vercel.app/embed/batch \
+  -H "Content-Type: application/json" \
+  -d '{"texts":["hello","world"]}'
+
+# Similarity
+curl -X POST https://your-deployment.vercel.app/similarity \
+  -H "Content-Type: application/json" \
+  -d '{"text_a":"machine learning","text_b":"deep learning"}'
+
+# Health check
+curl https://your-deployment.vercel.app/health</code></pre>
+</section>
+
+<section>
+  <h2>Go import usage</h2>
+  <p>Use the embedding algorithm directly in your Go programs:</p>
+  <pre><code>import "github.com/guiperry/text-embedder/pkg/embed"
+
+// Embed returns a 768-element []int32 vector
+vec := embed.Embed("the quick brown fox")
+
+// Compare two texts
+sim := embed.CosineSimilarity(
+    embed.Embed("neural networks"),
+    embed.Embed("deep learning"),
+)</code></pre>
+</section>
+
+<section>
+  <h2>Rate limits &amp; constraints</h2>
+  <table>
+    <thead>
+      <tr><th>Constraint</th><th>Serverless (Vercel)</th><th>Local binary</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Max batch size</td><td>128 texts</td><td>256 texts</td></tr>
+      <tr><td>Max body size</td><td>1 MB</td><td>1 MB</td></tr>
+      <tr><td>Function timeout</td><td>10s (Hobby) / 60s (Pro)</td><td>N/A</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>Source &amp; issues</h2>
+  <p>
+    <a href="https://github.com/guiperry/text-embedder">github.com/guiperry/text-embedder</a>
+    — clone the repo to run the local binary, browse the source, or open issues.
+  </p>
+</section>
+
+</div>
+</body>
+</html>

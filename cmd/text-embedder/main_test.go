@@ -18,6 +18,7 @@ import (
 	"sync"
 	"testing"
 
+	api "github.com/guiperry/text-embedder/internal/api"
 	"github.com/guiperry/text-embedder/pkg/embed"
 )
 
@@ -38,18 +39,17 @@ const providerBatchSize = 128 // matches TEXTEMBEDDER_BATCH_SIZE
 // exact batch size the SocratiCode provider sends (128 texts).
 func BenchmarkBatchHandler_providerBatchSize(b *testing.B) {
 	texts := makeTexts(providerBatchSize)
-	body, err := json.Marshal(batchRequest{Texts: texts})
+	body, err := json.Marshal(api.BatchRequest{Texts: texts})
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	// Use the default worker count (GOMAXPROCS) like the provider does
-	batchWorkers = runtime.GOMAXPROCS(0)
+	workers := api.ResolveWorkers(runtime.GOMAXPROCS(0))
 
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/embed/batch", bytes.NewReader(body))
-		handleBatch(w, r)
+		api.HandleBatch(w, r, workers)
 		if w.Code != http.StatusOK {
 			b.Fatalf("expected 200, got %d", w.Code)
 		}
@@ -60,16 +60,16 @@ func BenchmarkBatchHandler_providerBatchSize(b *testing.B) {
 // smaller batch (16 texts) — useful for low-latency queries.
 func BenchmarkBatchHandler_smallBatch(b *testing.B) {
 	texts := makeTexts(16)
-	body, err := json.Marshal(batchRequest{Texts: texts})
+	body, err := json.Marshal(api.BatchRequest{Texts: texts})
 	if err != nil {
 		b.Fatal(err)
 	}
-	batchWorkers = runtime.GOMAXPROCS(0)
+	workers := api.ResolveWorkers(runtime.GOMAXPROCS(0))
 
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/embed/batch", bytes.NewReader(body))
-		handleBatch(w, r)
+		api.HandleBatch(w, r, workers)
 		if w.Code != http.StatusOK {
 			b.Fatalf("expected 200, got %d", w.Code)
 		}
@@ -79,16 +79,16 @@ func BenchmarkBatchHandler_smallBatch(b *testing.B) {
 // BenchmarkBatchHandler_maxBatch benchmarks the maximum batch size (256).
 func BenchmarkBatchHandler_maxBatch(b *testing.B) {
 	texts := makeTexts(256)
-	body, err := json.Marshal(batchRequest{Texts: texts})
+	body, err := json.Marshal(api.BatchRequest{Texts: texts})
 	if err != nil {
 		b.Fatal(err)
 	}
-	batchWorkers = runtime.GOMAXPROCS(0)
+	workers := api.ResolveWorkers(runtime.GOMAXPROCS(0))
 
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/embed/batch", bytes.NewReader(body))
-		handleBatch(w, r)
+		api.HandleBatch(w, r, workers)
 		if w.Code != http.StatusOK {
 			b.Fatalf("expected 200, got %d", w.Code)
 		}
@@ -104,17 +104,16 @@ func BenchmarkBatchHandler_workers_8(b *testing.B)   { benchmarkWithWorkers(b, 8
 
 func benchmarkWithWorkers(b *testing.B, workers, textCount int) {
 	texts := makeTexts(textCount)
-	body, err := json.Marshal(batchRequest{Texts: texts})
+	body, err := json.Marshal(api.BatchRequest{Texts: texts})
 	if err != nil {
 		b.Fatal(err)
 	}
-	batchWorkers = workers
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/embed/batch", bytes.NewReader(body))
-		handleBatch(w, r)
+		api.HandleBatch(w, r, workers)
 		if w.Code != http.StatusOK {
 			b.Fatalf("expected 200, got %d", w.Code)
 		}
@@ -126,24 +125,24 @@ func benchmarkWithWorkers(b *testing.B, workers, textCount int) {
 // TestBatchOrder verifies that /embed/batch returns results in the same
 // order as the input texts, even though they're processed in parallel.
 func TestBatchOrder(t *testing.T) {
-	batchWorkers = runtime.GOMAXPROCS(0)
+	workers := api.ResolveWorkers(runtime.GOMAXPROCS(0))
 	n := 137 // odd prime, not a multiple of workers — stresses ordering
 
 	texts := makeTexts(n)
-	body, err := json.Marshal(batchRequest{Texts: texts})
+	body, err := json.Marshal(api.BatchRequest{Texts: texts})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/embed/batch", bytes.NewReader(body))
-	handleBatch(w, r)
+	api.HandleBatch(w, r, workers)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
 
-	var resp batchResponse
+	var resp api.BatchResponse
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
@@ -163,20 +162,20 @@ func TestBatchOrder(t *testing.T) {
 // response — the remaining sequential bottleneck after parallel Embed.
 func BenchmarkBatchJSON(b *testing.B) {
 	for _, n := range []int{16, 64, 128, 256} {
-		items := make([]batchItem, n)
+		items := make([]api.BatchItem, n)
 		emb := make([]int32, 768)
 		for i := range emb {
 			emb[i] = int32((i * 997) % 10001)
 		}
 		for i := range items {
-			items[i] = batchItem{
+			items[i] = api.BatchItem{
 				Index:      i,
 				Embedding:  emb,
 				Dimensions: 768,
 				TokenCount: 10,
 			}
 		}
-		resp := batchResponse{
+		resp := api.BatchResponse{
 			Results: items,
 			Model:   embed.ModelID,
 			Count:   n,
@@ -197,9 +196,9 @@ func BenchmarkBatchJSON(b *testing.B) {
 // HTTP requests in separate goroutines, while the internal worker pool
 // bounds total parallelism.
 func BenchmarkBatchHandler_concurrent(b *testing.B) {
-	batchWorkers = runtime.GOMAXPROCS(0)
+	workers := api.ResolveWorkers(runtime.GOMAXPROCS(0))
 
-	body128, _ := json.Marshal(batchRequest{Texts: makeTexts(128)})
+	body128, _ := json.Marshal(api.BatchRequest{Texts: makeTexts(128)})
 
 	for _, callers := range []int{1, 2, 4} {
 		b.Run(fmt.Sprintf("callers=%d", callers), func(b *testing.B) {
@@ -214,7 +213,7 @@ func BenchmarkBatchHandler_concurrent(b *testing.B) {
 							http.MethodPost, "/embed/batch",
 							bytes.NewReader(body128),
 						)
-						handleBatch(w, r)
+						api.HandleBatch(w, r, workers)
 						if w.Code != http.StatusOK {
 							b.Error("non-200 status")
 						}
@@ -231,7 +230,7 @@ func BenchmarkBatchHandler_concurrent(b *testing.B) {
 // TestBatchDeterminism verifies that embedding the same batch twice
 // produces identical results (the core property of the algorithm).
 func TestBatchDeterminism(t *testing.T) {
-	batchWorkers = runtime.GOMAXPROCS(0)
+	workers := api.ResolveWorkers(runtime.GOMAXPROCS(0))
 
 	texts := []string{
 		"the river bank",
@@ -239,7 +238,7 @@ func TestBatchDeterminism(t *testing.T) {
 		"machine learning is fascinating",
 		"hello world",
 	}
-	body, err := json.Marshal(batchRequest{Texts: texts})
+	body, err := json.Marshal(api.BatchRequest{Texts: texts})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,14 +246,14 @@ func TestBatchDeterminism(t *testing.T) {
 	// First run
 	w1 := httptest.NewRecorder()
 	r1 := httptest.NewRequest(http.MethodPost, "/embed/batch", bytes.NewReader(body))
-	handleBatch(w1, r1)
+	api.HandleBatch(w1, r1, workers)
 
 	// Second run
 	w2 := httptest.NewRecorder()
 	r2 := httptest.NewRequest(http.MethodPost, "/embed/batch", bytes.NewReader(body))
-	handleBatch(w2, r2)
+	api.HandleBatch(w2, r2, workers)
 
-	var resp1, resp2 batchResponse
+	var resp1, resp2 api.BatchResponse
 	json.NewDecoder(w1.Body).Decode(&resp1)
 	json.NewDecoder(w2.Body).Decode(&resp2)
 
@@ -275,13 +274,13 @@ func TestBatchDeterminism(t *testing.T) {
 // ---- Minimum viable handler (batch of 1) ---------------------------------
 
 func BenchmarkBatchHandler_single(b *testing.B) {
-	body, _ := json.Marshal(batchRequest{Texts: []string{"hello world"}})
-	batchWorkers = runtime.GOMAXPROCS(0)
+	body, _ := json.Marshal(api.BatchRequest{Texts: []string{"hello world"}})
+	workers := api.ResolveWorkers(runtime.GOMAXPROCS(0))
 
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/embed/batch", bytes.NewReader(body))
-		handleBatch(w, r)
+		api.HandleBatch(w, r, workers)
 		if w.Code != http.StatusOK {
 			b.Fatalf("expected 200, got %d", w.Code)
 		}
@@ -291,24 +290,26 @@ func BenchmarkBatchHandler_single(b *testing.B) {
 // ---- Error handling tests -----------------------------------------------
 
 func TestBatchHandler_EmptyInput(t *testing.T) {
+	workers := api.ResolveWorkers(runtime.GOMAXPROCS(0))
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/embed/batch",
 		strings.NewReader(`{"texts":[]}`))
-	handleBatch(w, r)
+	api.HandleBatch(w, r, workers)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty texts, got %d", w.Code)
 	}
 }
 
 func TestBatchHandler_ExceedsLimit(t *testing.T) {
+	workers := api.ResolveWorkers(runtime.GOMAXPROCS(0))
 	texts := make([]string, 257)
 	for i := range texts {
 		texts[i] = "x"
 	}
-	body, _ := json.Marshal(batchRequest{Texts: texts})
+	body, _ := json.Marshal(api.BatchRequest{Texts: texts})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodPost, "/embed/batch", bytes.NewReader(body))
-	handleBatch(w, r)
+	api.HandleBatch(w, r, workers)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for >256 texts, got %d", w.Code)
 	}

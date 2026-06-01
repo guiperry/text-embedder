@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stateless Refactor Plan — text-embedder</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222637;
+      --border: #2e3250;
+      --accent: #6c8cff;
+      --accent2: #a78bfa;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --orange: #fb923c;
+      --text: #e2e8f0;
+      --muted: #8892b0;
+      --code-bg: #141821;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body { padding: 2rem 1rem; }
+
+    .page { max-width: 960px; margin: 0 auto; }
+
+    /* ── header ── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    header h1 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    header .meta {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-top: 0.4rem;
+    }
+
+    /* ── section ── */
+    section { margin-bottom: 3rem; }
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--accent);
+      border-left: 3px solid var(--accent);
+      padding-left: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent2);
+      margin: 1.25rem 0 0.6rem;
+    }
+    p { margin-bottom: 0.8rem; color: var(--text); }
+
+    /* ── callout boxes ── */
+    .callout {
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin: 1rem 0;
+      border-left: 4px solid;
+      background: var(--surface);
+    }
+    .callout.info    { border-color: var(--accent); }
+    .callout.warn    { border-color: var(--yellow); }
+    .callout.danger  { border-color: var(--red); }
+    .callout.success { border-color: var(--green); }
+    .callout .label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.4rem;
+    }
+    .callout.info    .label { color: var(--accent); }
+    .callout.warn    .label { color: var(--yellow); }
+    .callout.danger  .label { color: var(--red); }
+    .callout.success .label { color: var(--green); }
+
+    /* ── code blocks ── */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      margin: 0.75rem 0 1rem;
+      font-size: 0.82rem;
+      line-height: 1.55;
+    }
+    code {
+      font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+      color: #c9d1d9;
+    }
+    pre code { color: inherit; }
+    .kw  { color: #ff79c6; }
+    .fn  { color: #82aaff; }
+    .str { color: #a3e635; }
+    .cm  { color: #6272a4; font-style: italic; }
+    .ty  { color: #fbbf24; }
+    .num { color: #f97316; }
+
+    /* ── step list ── */
+    .steps { counter-reset: step; list-style: none; }
+    .steps li {
+      counter-increment: step;
+      position: relative;
+      padding-left: 3rem;
+      margin-bottom: 1.5rem;
+    }
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0.05rem;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .steps li strong { display: block; font-size: 1rem; color: var(--text); }
+    .steps li p { color: var(--muted); font-size: 0.92rem; margin-top: 0.3rem; }
+
+    /* ── comparison grid ── */
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+    @media (max-width: 600px) { .compare { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+    .card h4 { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.6rem; }
+    .card ul { padding-left: 1.25rem; color: var(--muted); font-size: 0.88rem; }
+    .card ul li { margin-bottom: 0.35rem; }
+    .card.vercel h4  { color: #fff; border-bottom: 2px solid #888; padding-bottom: 0.4rem; }
+
+    /* ── table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      margin: 1rem 0;
+    }
+    th {
+      text-align: left;
+      padding: 0.6rem 0.9rem;
+      background: var(--surface2);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    td {
+      padding: 0.6rem 0.9rem;
+      border-top: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tr:nth-child(even) td { background: var(--surface); }
+    .badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+    }
+    .badge.ok     { background: #064e3b; color: var(--green); }
+    .badge.warn   { background: #451a03; color: var(--yellow); }
+    .badge.change { background: #1e1b4b; color: var(--accent2); }
+    .badge.new    { background: #042f2e; color: #2dd4bf; }
+
+    /* ── file tree ── */
+    .tree {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      font-family: monospace;
+      font-size: 0.82rem;
+      line-height: 1.7;
+      white-space: pre;
+    }
+    .tree .add  { color: var(--green); }
+    .tree .mod  { color: var(--yellow); }
+    .tree .del  { color: var(--red); text-decoration: line-through; opacity: 0.6; }
+    .tree .keep { color: var(--muted); }
+
+    /* ── inline code ── */
+    p code, li code, td code {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1em 0.4em;
+      font-size: 0.82em;
+      color: #c9d1d9;
+    }
+
+    ul, ol { padding-left: 1.5rem; margin-bottom: 0.8rem; }
+    li { margin-bottom: 0.3rem; color: var(--muted); }
+    li strong { color: var(--text); }
+
+    .toc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    .toc h3 { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.75rem; }
+    .toc ol { padding-left: 1.25rem; }
+    .toc li { margin-bottom: 0.3rem; font-size: 0.88rem; }
+    .toc a { color: var(--accent); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+
+    hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>Stateless Refactor Plan</h1>
+    <div class="meta">text-embedder &nbsp;·&nbsp; module <code>github.com/guiperry/text-embedder</code> &nbsp;·&nbsp; Generated 2026-05-31</div>
+  </header>
+
+  <!-- Table of Contents -->
+  <nav class="toc">
+    <h3>Contents</h3>
+    <ol>
+      <li><a href="#summary">Executive Summary</a></li>
+      <li><a href="#current">Current Architecture Analysis</a></li>
+      <li><a href="#blockers">Stateless Blockers &amp; Constraints</a></li>
+      <li><a href="#platform">Why Vercel</a></li>
+      <li><a href="#steps">Step-by-Step Refactor Plan</a></li>
+      <li><a href="#structure">New File Structure</a></li>
+      <li><a href="#code">Key Code Transformations</a></li>
+      <li><a href="#config">Platform Configuration Files</a></li>
+      <li><a href="#testing">Testing Strategy</a></li>
+      <li><a href="#tradeoffs">Trade-offs &amp; Known Limitations</a></li>
+    </ol>
+  </nav>
+
+  <!-- 1. Executive Summary -->
+  <section id="summary">
+    <h2>1. Executive Summary</h2>
+    <p>
+      The text-embedder is structurally well-suited for serverless deployment. Its core embedding
+      algorithm is <em>already</em> stateless — deterministic, side-effect-free, and backed by
+      zero external dependencies. The only obstacles are an architectural layer: the project is
+      currently packaged as a long-running HTTP server (with goroutine worker pools, graceful
+      shutdown, and a CLI flag parser) rather than as discrete serverless function handlers.
+    </p>
+    <p>
+      The refactor has <strong>one critical performance fix</strong>, <strong>one structural
+      restructure</strong>, and <strong>platform-specific wiring</strong>. No algorithm changes
+      are required. Estimated effort: 1–2 days for a careful implementation including tests.
+    </p>
+
+    <div class="callout success">
+      <div class="label">Good News</div>
+      The <code>pkg/embed</code> package requires <strong>zero changes</strong> to its public API.
+      All consumers (the SocratiCode provider, importers, etc.) keep the same import path and
+      function signatures.
+    </div>
+  </section>
+
+  <!-- 2. Current Architecture -->
+  <section id="current">
+    <h2>2. Current Architecture Analysis</h2>
+
+    <h3>What the server does today</h3>
+    <p>
+      <code>cmd/text-embedder/main.go</code> is a long-lived process that registers four
+      routes on a <code>http.ServeMux</code> and runs until it receives <code>SIGINT</code>/<code>SIGTERM</code>.
+      It uses a global <code>batchWorkers</code> integer (set from a CLI flag at startup) to bound
+      the goroutine pool inside <code>handleBatch</code>.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Endpoint</th><th>Method</th><th>What it does</th><th>Stateless?</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>/embed</code></td><td>POST</td>
+          <td>Tokenizes text → lattice vector → landmark similarity profile (768-dim int32)</td>
+          <td><span class="badge ok">Yes</span></td>
+        </tr>
+        <tr>
+          <td><code>/embed/batch</code></td><td>POST</td>
+          <td>Same as above for up to 256 texts, fanned out over a goroutine worker pool</td>
+          <td><span class="badge ok">Yes</span></td>
+        </tr>
+        <tr>
+          <td><code>/similarity</code></td><td>POST</td>
+          <td>Embeds two texts, returns cosine similarity as float64</td>
+          <td><span class="badge ok">Yes</span></td>
+        </tr>
+        <tr>
+          <td><code>/health</code></td><td>GET</td>
+          <td>Returns static model metadata + current timestamp</td>
+          <td><span class="badge ok">Yes</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Stateful elements in the current codebase</h3>
+    <table>
+      <thead>
+        <tr><th>Element</th><th>Location</th><th>Problem for serverless</th><th>Fix</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>batchWorkers</code> global</td>
+          <td><code>main.go:35</code></td>
+          <td>Set by CLI flag; in serverless there is no startup phase</td>
+          <td><span class="badge change">Read from env var or constant</span></td>
+        </tr>
+        <tr>
+          <td><code>server := &amp;http.Server{...}</code></td>
+          <td><code>main.go:265</code></td>
+          <td>Long-running server model incompatible with function invocation</td>
+          <td><span class="badge change">Replace with handler exports</span></td>
+        </tr>
+        <tr>
+          <td>Graceful shutdown / signal handling</td>
+          <td><code>main.go:273–302</code></td>
+          <td>No OS signals in serverless runtimes</td>
+          <td><span class="badge change">Delete entirely</span></td>
+        </tr>
+        <tr>
+          <td><code>flag.Parse()</code> / CLI flags</td>
+          <td><code>main.go:245–249</code></td>
+          <td>No argv in function invocations; but existing providers depend on <code>--workers</code></td>
+          <td><span class="badge change">Keep flag in binary; env var fallback in serverless handler</span></td>
+        </tr>
+        <tr>
+          <td><code>getLandmarkVectors()</code> recomputed every call</td>
+          <td><code>embed.go:66</code></td>
+          <td>Recomputes 768 lattice vectors on every <code>Embed()</code> call — catastrophic for cold-start latency on batch requests</td>
+          <td><span class="badge warn">Critical: add sync.Once cache</span></td>
+        </tr>
+        <tr>
+          <td>Logging middleware</td>
+          <td><code>main.go:217–240</code></td>
+          <td>Platform provides its own request logs; custom middleware is redundant</td>
+          <td><span class="badge change">Remove or make optional</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 3. Blockers -->
+  <section id="blockers">
+    <h2>3. Stateless Blockers &amp; Constraints</h2>
+
+    <div class="callout danger">
+      <div class="label">Critical — Landmark Vector Recomputation</div>
+      <p>
+        <code>pkg/embed/embed.go:66</code> calls <code>getLandmarkVectors()</code> on <em>every
+        single call</em> to <code>Embed()</code>. That function iterates all 768 landmark strings
+        through the full <code>embedToLattice()</code> pipeline (tokenize → hash → accumulate
+        over a 4096-dim lattice). For a batch of 256 texts that is <strong>256 × 768 = 196,608
+        landmark vectorizations</strong> per request — on top of the 256 vectorizations for the
+        actual inputs. This will hit Vercel's default 10-second function timeout on large batches.
+      </p>
+      <p style="margin-top:0.5rem">
+        <strong>Fix:</strong> Wrap <code>getLandmarkVectors()</code> with a <code>sync.Once</code>
+        so the landmark matrix is computed exactly once per process lifetime (i.e., once per
+        warm container). The computation drops to zero on all subsequent invocations within the
+        same warm function instance.
+      </p>
+    </div>
+
+    <div class="callout warn">
+      <div class="label">Warning — Batch Timeout Risk</div>
+      <p>
+        Vercel's Hobby plan caps function execution at <strong>10 seconds</strong>; Pro at
+        <strong>60 seconds</strong>; Enterprise at <strong>900 seconds</strong>. Even with
+        the <code>sync.Once</code> fix, a batch of 256 texts on a single-vCPU cold container
+        may approach the Hobby limit. Recommend capping the serverless batch size at
+        <strong>128</strong> (configurable via a separate constant) and documenting that the
+        local binary supports up to 256. The <code>vercel.json</code> <code>maxDuration</code>
+        should be set to 60 to use the Pro limit safely.
+      </p>
+    </div>
+
+    <div class="callout warn">
+      <div class="label">Warning — Worker Pool Assumption</div>
+      <p>
+        The current batch handler creates a semaphore sized to <code>GOMAXPROCS</code>, set at
+        startup via the <code>--workers</code> flag. Serverless functions typically run with
+        <code>GOMAXPROCS=1</code> or 2 and have no startup phase. The resolution chain must
+        therefore be: <strong>(1) <code>--workers</code> flag</strong> (binary only, preserves
+        backward compatibility with existing providers and agentic callers) →
+        <strong>(2) <code>EMBED_BATCH_WORKERS</code> env var</strong> (Vercel dashboard / CI) →
+        <strong>(3) <code>runtime.GOMAXPROCS(0)</code></strong> as the universal fallback.
+        This means existing providers that already pass <code>--workers</code> see no change
+        whatsoever, while the Vercel deployment gains a tuneable escape hatch via env var.
+      </p>
+    </div>
+
+    <div class="callout info">
+      <div class="label">Note — No Database, No Sessions, No Shared State</div>
+      <p>
+        The embedding algorithm has no database writes, no session cookies, no in-memory caches
+        that need to be shared across instances, and no file system writes. Every request is
+        truly self-contained. This makes the refactor substantially simpler than a typical
+        stateless migration.
+      </p>
+    </div>
+  </section>
+
+  <!-- 4. Platform Choice -->
+  <section id="platform">
+    <h2>4. Why Vercel</h2>
+
+    <p>
+      Vercel is the deployment target for this refactor. Its Go runtime requires no additional
+      SDK or dependencies — any <code>.go</code> file placed in an <code>api/</code> subdirectory
+      is automatically compiled and deployed as a serverless function. Route rewrites in
+      <code>vercel.json</code> let the existing API surface (<code>/embed</code>,
+      <code>/embed/batch</code>, <code>/similarity</code>, <code>/health</code>) remain intact
+      so all current clients need zero reconfiguration.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Property</th><th>Detail</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Go support</td><td>Native — no Lambda adapter, no extra <code>go.mod</code> dependency</td></tr>
+        <tr><td>Routing</td><td>File-based: <code>api/embed/batch.go</code> → <code>/api/embed/batch</code>; rewrites strip the <code>/api</code> prefix</td></tr>
+        <tr><td>Function timeout</td><td>10s Hobby · 60s Pro · 900s Enterprise — configurable per function in <code>vercel.json</code></td></tr>
+        <tr><td>Static assets</td><td><code>public/</code> directory served automatically; <code>public/index.html</code> becomes the root landing page</td></tr>
+        <tr><td>Environment variables</td><td>Set via Vercel dashboard or <code>vercel env</code> CLI; available to all functions at runtime</td></tr>
+        <tr><td>Local development</td><td><code>vercel dev</code> emulates the full serverless runtime locally</td></tr>
+        <tr><td>Deploy preview</td><td>Every PR gets an isolated preview URL — useful for provider integration testing</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 5. Step-by-Step Plan -->
+  <section id="steps">
+    <h2>5. Step-by-Step Refactor Plan</h2>
+
+    <ol class="steps">
+      <li>
+        <strong>Fix: Add <code>sync.Once</code> to <code>getLandmarkVectors()</code></strong>
+        <p>
+          In <code>pkg/embed/embed.go</code>, add a package-level <code>sync.Once</code> and a
+          cached <code>[][]int64</code>. The first call to <code>Embed()</code> after a cold
+          start pays the computation cost once (~5–15ms for 768 landmarks); all subsequent
+          calls within the same warm function container return the cached slice instantly.
+          This change is backward compatible and safe for concurrent callers.
+        </p>
+      </li>
+      <li>
+        <strong>Create <code>api/</code> handler files for Vercel</strong>
+        <p>
+          Extract each of the four route handlers from <code>cmd/text-embedder/main.go</code>
+          into separate files under <code>api/</code>. The handler logic is identical — only the
+          packaging changes. Each file must export a function named <code>Handler</code> with the
+          signature <code>func Handler(w http.ResponseWriter, r *http.Request)</code> in
+          package <code>handler</code> (Vercel's convention for Go functions).
+        </p>
+      </li>
+      <li>
+        <strong>Extract shared types &amp; helpers into an internal package</strong>
+        <p>
+          The request/response structs (<code>embedRequest</code>, <code>batchResponse</code>,
+          etc.) and helpers (<code>writeJSON</code>, <code>writeError</code>, <code>decode</code>)
+          are duplicated across all four handlers if left inline. Move them to
+          <code>internal/api/helpers.go</code> so all handler files share them without copying.
+        </p>
+      </li>
+      <li>
+        <strong>Implement flag → env var → GOMAXPROCS worker resolution</strong>
+        <p>
+          The <code>--workers</code> CLI flag is preserved in <code>cmd/text-embedder/main.go</code>
+          for full backward compatibility with existing providers and agentic callers. A shared
+          <code>resolveWorkers(flagVal int) int</code> helper in <code>internal/api</code> encodes
+          the three-tier chain: non-zero <code>flagVal</code> wins; otherwise parse
+          <code>EMBED_BATCH_WORKERS</code> env var; otherwise fall back to
+          <code>runtime.GOMAXPROCS(0)</code>. The binary passes its flag value in; the Vercel
+          handler passes <code>0</code> (no flag), so it naturally falls through to the env var
+          or GOMAXPROCS. No existing caller is broken.
+        </p>
+      </li>
+      <li>
+        <strong>Add CORS headers</strong>
+        <p>
+          Serverless APIs are typically called from browser contexts. Add permissive CORS
+          headers (<code>Access-Control-Allow-Origin: *</code>) to all handlers and handle
+          <code>OPTIONS</code> preflight requests. This can be done centrally in the shared
+          helpers or via <code>vercel.json</code> headers config.
+        </p>
+      </li>
+      <li>
+        <strong>Add <code>vercel.json</code></strong>
+        <p>
+          Configure route rewrites so that <code>/embed</code> maps to <code>/api/embed</code>,
+          preserving the existing API surface exactly. Clients (including the SocratiCode provider)
+          need zero configuration changes. Set <code>maxDuration: 60</code> for the batch function
+          to avoid Hobby-tier timeouts on large batches.
+        </p>
+      </li>
+      <li>
+        <strong>Create <code>public/index.html</code> — API documentation landing page</strong>
+        <p>
+          Vercel automatically serves the <code>public/</code> directory as static assets, making
+          <code>public/index.html</code> the page cloud users land on when they visit the root URL.
+          The page should document every endpoint (method, path, request schema, response schema,
+          and a working <code>curl</code> example), show the Go import usage, list the model
+          constants (<code>ModelID</code>, <code>Dims</code>), and link to the GitHub repo.
+          This replaces ad-hoc README reading for cloud consumers who never clone the repo.
+        </p>
+      </li>
+      <li>
+        <strong>Keep <code>cmd/text-embedder/</code> for local development</strong>
+        <p>
+          The existing long-running server binary is still useful for local development, benchmarking,
+          and as the production binary for self-hosted deployments. Update it to import handlers
+          from the new shared location instead of duplicating logic. Add a note to the README
+          documenting both deployment modes.
+        </p>
+      </li>
+      <li>
+        <strong>Update <code>go.mod</code> module path and verify build</strong>
+        <p>
+          Run <code>go build ./...</code> and <code>go test ./...</code> to confirm nothing is broken.
+          The Vercel CLI can also do a local preview build with <code>vercel dev</code> before
+          any deployment.
+        </p>
+      </li>
+      <li>
+        <strong>(Optional) Reduce serverless batch cap to 128</strong>
+        <p>
+          The current limit of 256 was chosen for the self-hosted binary where CPU time is
+          unconstrained. For the serverless handler, add a separate constant (e.g.
+          <code>serverlessBatchLimit = 128</code>) to stay comfortably within the 10s Hobby
+          timeout. Leave the 256 limit in the local binary unchanged.
+        </p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- 6. New File Structure -->
+  <section id="structure">
+    <h2>6. New File Structure</h2>
+
+    <div class="tree">
+text-embedder/
+├── <span class="keep">pkg/</span>
+│   └── <span class="keep">embed/</span>
+│       ├── <span class="mod">embed.go</span>          <span class="cm">← add sync.Once landmark cache (Step 1)</span>
+│       ├── <span class="keep">embed_test.go</span>
+│       └── <span class="keep">landmarks.go</span>
+│
+├── <span class="add">internal/</span>
+│   └── <span class="add">api/</span>
+│       └── <span class="add">helpers.go</span>        <span class="cm">← shared types, CORS, writeJSON, resolveWorkers (Steps 3, 4)</span>
+│
+├── <span class="add">api/</span>                       <span class="cm">← Vercel serverless functions (Steps 2, 5)</span>
+│   ├── <span class="add">embed.go</span>               <span class="cm">← POST /embed</span>
+│   ├── <span class="add">embed/</span>
+│   │   └── <span class="add">batch.go</span>           <span class="cm">← POST /embed/batch</span>
+│   ├── <span class="add">similarity.go</span>          <span class="cm">← POST /similarity</span>
+│   └── <span class="add">health.go</span>             <span class="cm">← GET  /health</span>
+│
+├── <span class="add">public/</span>                    <span class="cm">← Vercel static assets (Step 7)</span>
+│   └── <span class="add">index.html</span>             <span class="cm">← API docs landing page for cloud users</span>
+│
+├── <span class="keep">cmd/</span>
+│   └── <span class="keep">text-embedder/</span>
+│       ├── <span class="mod">main.go</span>            <span class="cm">← keeps --workers flag; uses resolveWorkers() (Step 8)</span>
+│       ├── <span class="keep">main_test.go</span>
+│       └── <span class="keep">integration_test.go</span>
+│
+├── <span class="add">vercel.json</span>                <span class="cm">← route rewrites, CORS headers, maxDuration (Step 6)</span>
+├── <span class="keep">go.mod</span>
+├── <span class="keep">Makefile</span>
+└── <span class="keep">README.md</span>
+    </div>
+
+    <p style="margin-top:0.75rem; color:var(--muted); font-size:0.85rem;">
+      <span class="add" style="font-family:monospace">Green</span> = new files &nbsp;·&nbsp;
+      <span class="mod" style="font-family:monospace">Yellow</span> = modified &nbsp;·&nbsp;
+      <span class="keep" style="font-family:monospace">Gray</span> = unchanged
+    </p>
+  </section>
+
+  <!-- 7. Key Code Transformations -->
+  <section id="code">
+    <h2>7. Key Code Transformations</h2>
+
+    <h3>7a. <code>sync.Once</code> landmark cache in <code>pkg/embed/embed.go</code></h3>
+    <p>The most impactful single change. Replace the inline <code>getLandmarkVectors()</code> call inside <code>Embed()</code>:</p>
+
+    <pre><code><span class="cm">// BEFORE (embed.go:66) — recomputes 768 lattice vectors on every Embed() call</span>
+<span class="kw">func</span> <span class="fn">Embed</span>(text <span class="ty">string</span>) []<span class="ty">int32</span> {
+    lat := <span class="fn">embedToLattice</span>(text)
+    landmarks := <span class="fn">getLandmarkVectors</span>()   <span class="cm">// ← hot path, 768 full vectorizations</span>
+    ...
+}</code></pre>
+
+    <pre><code><span class="cm">// AFTER — compute once, reuse forever within the warm container</span>
+<span class="kw">var</span> (
+    landmarkOnce    sync.Once
+    landmarkVectors [][]<span class="ty">int64</span>
+)
+
+<span class="kw">func</span> <span class="fn">cachedLandmarkVectors</span>() [][]<span class="ty">int64</span> {
+    landmarkOnce.Do(<span class="kw">func</span>() {
+        landmarkVectors = <span class="fn">getLandmarkVectors</span>()
+    })
+    <span class="kw">return</span> landmarkVectors
+}
+
+<span class="kw">func</span> <span class="fn">Embed</span>(text <span class="ty">string</span>) []<span class="ty">int32</span> {
+    lat := <span class="fn">embedToLattice</span>(text)
+    landmarks := <span class="fn">cachedLandmarkVectors</span>()   <span class="cm">// ← O(1) after first call</span>
+    ...
+}</code></pre>
+
+    <h3>7b. Vercel handler file (<code>api/embed.go</code>)</h3>
+    <p>
+      Vercel's Go runtime discovers handler files by looking for an exported <code>Handler</code>
+      function in package <code>handler</code>. The handler logic is identical to today's
+      <code>handleEmbed</code> — only the packaging differs.
+    </p>
+
+    <pre><code><span class="kw">package</span> handler
+
+<span class="kw">import</span> (
+    <span class="str">"net/http"</span>
+
+    api <span class="str">"github.com/guiperry/text-embedder/internal/api"</span>
+    <span class="str">"github.com/guiperry/text-embedder/pkg/embed"</span>
+)
+
+<span class="kw">func</span> <span class="fn">Handler</span>(w http.ResponseWriter, r *http.Request) {
+    <span class="fn">api.SetCORSHeaders</span>(w)
+    <span class="kw">if</span> r.Method == http.MethodOptions {
+        w.WriteHeader(http.StatusNoContent)
+        <span class="kw">return</span>
+    }
+    <span class="kw">if</span> r.Method != http.MethodPost {
+        <span class="fn">api.WriteError</span>(w, http.StatusMethodNotAllowed, <span class="str">"method not allowed; use POST"</span>)
+        <span class="kw">return</span>
+    }
+    <span class="kw">var</span> req api.EmbedRequest
+    <span class="kw">if</span> !<span class="fn">api.Decode</span>(w, r, &amp;req) {
+        <span class="kw">return</span>
+    }
+    vec := embed.<span class="fn">Embed</span>(req.Text)
+    <span class="fn">api.WriteJSON</span>(w, http.StatusOK, api.EmbedResponse{
+        Embedding:  vec,
+        Dimensions: embed.Dims,
+        Model:      embed.ModelID,
+        TokenCount: <span class="fn">len</span>(embed.<span class="fn">Tokenize</span>(req.Text)),
+    })
+}</code></pre>
+
+    <h3>7c. Shared helpers (<code>internal/api/helpers.go</code>)</h3>
+    <p>All types and HTTP helpers are centralized here. Each Vercel handler file imports this package.</p>
+
+    <pre><code><span class="kw">package</span> api
+
+<span class="kw">import</span> (
+    <span class="str">"encoding/json"</span>
+    <span class="str">"log/slog"</span>
+    <span class="str">"net/http"</span>
+)
+
+<span class="cm">// Request/response types (unchanged from main.go)</span>
+<span class="kw">type</span> EmbedRequest    <span class="kw">struct</span> { Text  <span class="ty">string</span>   `json:<span class="str">"text"</span>` }
+<span class="kw">type</span> BatchRequest    <span class="kw">struct</span> { Texts []<span class="ty">string</span> `json:<span class="str">"texts"</span>` }
+<span class="kw">type</span> SimilarityRequest <span class="kw">struct</span> {
+    TextA <span class="ty">string</span> `json:<span class="str">"text_a"</span>`
+    TextB <span class="ty">string</span> `json:<span class="str">"text_b"</span>`
+}
+<span class="cm">// ... (EmbedResponse, BatchResponse, etc.)</span>
+
+<span class="kw">func</span> <span class="fn">SetCORSHeaders</span>(w http.ResponseWriter) {
+    w.Header().Set(<span class="str">"Access-Control-Allow-Origin"</span>, <span class="str">"*"</span>)
+    w.Header().Set(<span class="str">"Access-Control-Allow-Methods"</span>, <span class="str">"POST, GET, OPTIONS"</span>)
+    w.Header().Set(<span class="str">"Access-Control-Allow-Headers"</span>, <span class="str">"Content-Type"</span>)
+}
+
+<span class="kw">func</span> <span class="fn">WriteJSON</span>(w http.ResponseWriter, status <span class="ty">int</span>, v <span class="kw">any</span>) { <span class="cm">/* same as today */</span> }
+<span class="kw">func</span> <span class="fn">WriteError</span>(w http.ResponseWriter, status <span class="ty">int</span>, msg <span class="ty">string</span>) { <span class="cm">/* same as today */</span> }
+<span class="kw">func</span> <span class="fn">Decode</span>(w http.ResponseWriter, r *http.Request, dst <span class="kw">any</span>) <span class="ty">bool</span> { <span class="cm">/* same as today */</span> }</code></pre>
+
+    <h3>7d. <code>resolveWorkers</code> — flag → env var → GOMAXPROCS chain</h3>
+    <p>
+      This helper lives in <code>internal/api/helpers.go</code> and is shared by both the binary
+      and the serverless handlers. The binary passes its parsed <code>--workers</code> flag value;
+      the Vercel handlers pass <code>0</code>, which falls through to the env var or GOMAXPROCS.
+    </p>
+
+    <pre><code><span class="cm">// resolveWorkers returns the concurrency bound for the batch semaphore.
+// Priority: --workers flag (binary only) → EMBED_BATCH_WORKERS env var → GOMAXPROCS</span>
+<span class="kw">func</span> <span class="fn">ResolveWorkers</span>(flagVal <span class="ty">int</span>) <span class="ty">int</span> {
+    <span class="kw">if</span> flagVal > <span class="num">0</span> {
+        <span class="kw">return</span> flagVal   <span class="cm">// --workers flag wins; preserves existing provider/agentic behavior</span>
+    }
+    <span class="kw">if</span> s := os.<span class="fn">Getenv</span>(<span class="str">"EMBED_BATCH_WORKERS"</span>); s != <span class="str">""</span> {
+        <span class="kw">if</span> n, err := strconv.<span class="fn">Atoi</span>(s); err == <span class="kw">nil</span> &amp;&amp; n > <span class="num">0</span> {
+            <span class="kw">return</span> n   <span class="cm">// env var wins for serverless deployments</span>
+        }
+    }
+    <span class="kw">return</span> runtime.<span class="fn">GOMAXPROCS</span>(<span class="num">0</span>)   <span class="cm">// universal fallback</span>
+}</code></pre>
+
+    <pre><code><span class="cm">// cmd/text-embedder/main.go — unchanged flag registration; passes flagVal to handler</span>
+workers := flag.<span class="fn">Int</span>(<span class="str">"workers"</span>, runtime.<span class="fn">GOMAXPROCS</span>(<span class="num">0</span>), <span class="str">"max concurrent batch workers"</span>)
+flag.<span class="fn">Parse</span>()
+
+mux.<span class="fn">HandleFunc</span>(<span class="str">"/embed"</span>,       api.<span class="fn">HandleEmbed</span>)
+mux.<span class="fn">HandleFunc</span>(<span class="str">"/embed/batch"</span>, <span class="kw">func</span>(w http.ResponseWriter, r *http.Request) {
+    api.<span class="fn">HandleBatch</span>(w, r, api.<span class="fn">ResolveWorkers</span>(*workers))
+})
+mux.<span class="fn">HandleFunc</span>(<span class="str">"/similarity"</span>,  api.<span class="fn">HandleSimilarity</span>)
+mux.<span class="fn">HandleFunc</span>(<span class="str">"/health"</span>,      api.<span class="fn">HandleHealth</span>)</code></pre>
+
+    <pre><code><span class="cm">// api/embed/batch.go — Vercel handler; passes 0 so flag falls through to env/GOMAXPROCS</span>
+<span class="kw">func</span> <span class="fn">Handler</span>(w http.ResponseWriter, r *http.Request) {
+    api.<span class="fn">SetCORSHeaders</span>(w)
+    <span class="kw">if</span> r.Method == http.MethodOptions { w.<span class="fn">WriteHeader</span>(http.StatusNoContent); <span class="kw">return</span> }
+    api.<span class="fn">HandleBatch</span>(w, r, api.<span class="fn">ResolveWorkers</span>(<span class="num">0</span>))
+}</code></pre>
+  </section>
+
+  <!-- 8. Config Files -->
+  <section id="config">
+    <h2>8. Configuration Files</h2>
+
+    <h3><code>vercel.json</code> — route rewrites, CORS headers, function timeout</h3>
+    <pre><code>{
+  <span class="str">"rewrites"</span>: [
+    { <span class="str">"source"</span>: <span class="str">"/embed"</span>,         <span class="str">"destination"</span>: <span class="str">"/api/embed"</span> },
+    { <span class="str">"source"</span>: <span class="str">"/embed/batch"</span>,  <span class="str">"destination"</span>: <span class="str">"/api/embed/batch"</span> },
+    { <span class="str">"source"</span>: <span class="str">"/similarity"</span>,   <span class="str">"destination"</span>: <span class="str">"/api/similarity"</span> },
+    { <span class="str">"source"</span>: <span class="str">"/health"</span>,       <span class="str">"destination"</span>: <span class="str">"/api/health"</span> }
+  ],
+  <span class="str">"headers"</span>: [
+    {
+      <span class="str">"source"</span>: <span class="str">"/(.*)"</span>,
+      <span class="str">"headers"</span>: [
+        { <span class="str">"key"</span>: <span class="str">"Access-Control-Allow-Origin"</span>,  <span class="str">"value"</span>: <span class="str">"*"</span> },
+        { <span class="str">"key"</span>: <span class="str">"Access-Control-Allow-Methods"</span>, <span class="str">"value"</span>: <span class="str">"POST, GET, OPTIONS"</span> },
+        { <span class="str">"key"</span>: <span class="str">"Access-Control-Allow-Headers"</span>, <span class="str">"value"</span>: <span class="str">"Content-Type"</span> }
+      ]
+    }
+  ],
+  <span class="str">"functions"</span>: {
+    <span class="str">"api/**/*.go"</span>: {
+      <span class="str">"maxDuration"</span>: <span class="num">60</span>
+    }
+  }
+}</code></pre>
+
+    <h3><code>public/index.html</code> — required content for the landing page</h3>
+    <p>
+      The landing page must be complete enough that a developer can integrate without ever reading
+      the README or cloning the repo. Required sections:
+    </p>
+    <ul>
+      <li><strong>What it is</strong> — one-paragraph description: deterministic 768-dim text embeddings, no ML models, pure feature hashing, model ID <code>landmark-lattice-v1</code></li>
+      <li><strong>Endpoint reference table</strong> — method, path, request body schema (field name + type + required/optional), response schema</li>
+      <li><strong>Curl examples</strong> — one for each endpoint, copy-pasteable with the live deployment URL substituted in</li>
+      <li><strong>Response field glossary</strong> — what <code>embedding</code>, <code>dimensions</code>, <code>token_count</code>, <code>model</code>, <code>similarity</code> mean</li>
+      <li><strong>Go import usage</strong> — how to import <code>github.com/guiperry/text-embedder/pkg/embed</code> directly, with a minimal working example calling <code>embed.Embed()</code> and <code>embed.CosineSimilarity()</code></li>
+      <li><strong>Rate limits &amp; constraints</strong> — batch size cap (128 serverless / 256 local binary), body size limit (1 MB), timeout per plan tier</li>
+      <li><strong>GitHub link</strong> — link to the repository for source, issues, and the local binary download</li>
+    </ul>
+    <div class="callout info">
+      <div class="label">Styling note</div>
+      The page should be self-contained (no CDN dependencies) so it renders correctly in
+      restricted network environments and air-gapped Vercel preview deployments. Inline CSS
+      only. Dark theme is consistent with the project aesthetic.
+    </div>
+  </section>
+
+  <!-- 9. Testing -->
+  <section id="testing">
+    <h2>9. Testing Strategy</h2>
+
+    <p>
+      The existing tests in <code>cmd/text-embedder/main_test.go</code> already use
+      <code>net/http/httptest</code> recorders and call handlers directly — they do not
+      spin up a real TCP server. This means they will continue to work with no changes
+      as long as the handler functions are importable from their new location.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Test file</th><th>Status after refactor</th><th>Action needed</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>cmd/.../main_test.go</code> (benchmarks &amp; unit)</td>
+          <td><span class="badge ok">Works as-is</span></td>
+          <td>Update import path if handlers move to <code>internal/api</code></td>
+        </tr>
+        <tr>
+          <td><code>cmd/.../integration_test.go</code></td>
+          <td><span class="badge warn">Check for TCP dependencies</span></td>
+          <td>If it dials a real port, update or skip in CI for the serverless target</td>
+        </tr>
+        <tr>
+          <td><code>pkg/embed/embed_test.go</code></td>
+          <td><span class="badge ok">Unchanged</span></td>
+          <td>No action needed</td>
+        </tr>
+        <tr>
+          <td>Serverless handler tests (new)</td>
+          <td><span class="badge new">Add</span></td>
+          <td>Mirror the existing httptest pattern for each <code>api/*.go</code> handler</td>
+        </tr>
+        <tr>
+          <td><code>sync.Once</code> cache test (new)</td>
+          <td><span class="badge new">Add</span></td>
+          <td>Assert that two consecutive <code>embed.Embed()</code> calls produce identical output; also add a concurrent-safety test</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Verifying the deployment locally</h3>
+    <pre><code><span class="cm"># Install Vercel CLI</span>
+npm i -g vercel
+
+<span class="cm"># Local dev server — emulates the serverless runtime</span>
+vercel dev
+
+<span class="cm"># Test endpoints</span>
+curl -X POST http://localhost:3000/embed \
+  -H "Content-Type: application/json" \
+  -d '{"text": "hello world"}'
+
+curl -X POST http://localhost:3000/embed/batch \
+  -H "Content-Type: application/json" \
+  -d '{"texts": ["hello", "world"]}'</code></pre>
+  </section>
+
+  <!-- 10. Trade-offs -->
+  <section id="tradeoffs">
+    <h2>10. Trade-offs &amp; Known Limitations</h2>
+
+    <table>
+      <thead>
+        <tr><th>Topic</th><th>Self-hosted binary</th><th>Serverless deployment</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Cold start latency</td>
+          <td>~0ms (process always warm)</td>
+          <td>~50–200ms on first request after idle; <code>sync.Once</code> fix keeps subsequent calls fast</td>
+        </tr>
+        <tr>
+          <td>Max batch size</td>
+          <td>256 texts</td>
+          <td>Recommend 128 (safe within 10s Hobby timeout); 256 ok on Pro/Enterprise</td>
+        </tr>
+        <tr>
+          <td>Goroutine worker pool</td>
+          <td>Configurable via <code>--workers</code> flag (unchanged); defaults to GOMAXPROCS</td>
+          <td>Flag not applicable; reads <code>EMBED_BATCH_WORKERS</code> env var → GOMAXPROCS; same <code>ResolveWorkers()</code> helper used by both paths</td>
+        </tr>
+        <tr>
+          <td>SocratiCode provider compatibility</td>
+          <td>Full compatibility</td>
+          <td>Full compatibility — same API surface, same response shapes, same model ID</td>
+        </tr>
+        <tr>
+          <td>Concurrent requests</td>
+          <td>Handled by Go's goroutine scheduler</td>
+          <td>Each request is a separate function invocation; platform scales horizontally</td>
+        </tr>
+        <tr>
+          <td>Observability</td>
+          <td>Structured <code>slog</code> output to stdout</td>
+          <td>Platform captures stdout/stderr; custom logging middleware not needed</td>
+        </tr>
+        <tr>
+          <td>Cost model</td>
+          <td>Fixed cost of server/VPS</td>
+          <td>Pay-per-invocation; very cheap for low/moderate traffic, can be expensive under sustained high load</td>
+        </tr>
+        <tr>
+          <td>Binary distribution</td>
+          <td>Pre-built <code>.gz</code> binaries for Darwin/Linux/Windows</td>
+          <td>Not applicable; Vercel compiles from source at deploy time</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout info">
+      <div class="label">Provider Queue &amp; Binary Lifecycle</div>
+      The <code>provider-example.js</code> file assumes a locally-running binary with port probing
+      and a kill/restart recovery loop. When the provider points at a Vercel URL instead, the
+      binary lifecycle management (<code>resolveBaseUrl</code>, <code>killBinary</code>,
+      <code>probePort</code>) becomes irrelevant — the URL is always available. The provider should
+      support a <code>TEXTEMBEDDER_URL</code> env var pointing to the deployed Vercel URL so the
+      binary-spawn path is bypassed entirely.
+    </div>
+
+    <hr />
+
+    <h3>Summary of changes by file</h3>
+    <table>
+      <thead>
+        <tr><th>File</th><th>Change type</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>pkg/embed/embed.go</code></td><td><span class="badge warn">Modify</span></td><td>Add <code>sync.Once</code> landmark cache — most impactful change</td></tr>
+        <tr><td><code>internal/api/helpers.go</code></td><td><span class="badge new">New</span></td><td>Shared types, CORS, writeJSON, writeError, decode</td></tr>
+        <tr><td><code>api/embed.go</code></td><td><span class="badge new">New</span></td><td>Vercel handler for <code>POST /embed</code></td></tr>
+        <tr><td><code>api/embed/batch.go</code></td><td><span class="badge new">New</span></td><td>Vercel handler for <code>POST /embed/batch</code></td></tr>
+        <tr><td><code>api/similarity.go</code></td><td><span class="badge new">New</span></td><td>Vercel handler for <code>POST /similarity</code></td></tr>
+        <tr><td><code>api/health.go</code></td><td><span class="badge new">New</span></td><td>Vercel handler for <code>GET /health</code></td></tr>
+        <tr><td><code>public/index.html</code></td><td><span class="badge new">New</span></td><td>Self-contained API docs landing page served at root <code>/</code> by Vercel</td></tr>
+        <tr><td><code>vercel.json</code></td><td><span class="badge new">New</span></td><td>Route rewrites, CORS headers, <code>maxDuration: 60</code></td></tr>
+        <tr><td><code>internal/api/helpers.go</code> — <code>ResolveWorkers</code></td><td><span class="badge new">New</span></td><td>Flag → env var → GOMAXPROCS chain; shared by binary and Vercel handlers</td></tr>
+        <tr><td><code>cmd/text-embedder/main.go</code></td><td><span class="badge warn">Modify</span></td><td>Import handlers + <code>ResolveWorkers</code> from <code>internal/api</code>; <code>--workers</code> flag preserved</td></tr>
+        <tr><td><code>cmd/text-embedder/main_test.go</code></td><td><span class="badge warn">Minor update</span></td><td>Update import paths if handlers moved</td></tr>
+        <tr><td><code>pkg/embed/embed_test.go</code></td><td><span class="badge ok">No change</span></td><td>All existing tests continue to pass</td></tr>
+        <tr><td><code>go.mod</code></td><td><span class="badge ok">No change</span></td><td>Vercel requires zero new Go dependencies</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+</body>
+</html>
