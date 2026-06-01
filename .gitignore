@@ -1,0 +1,4 @@
+
+bin/embedder-darwin
+bin/embedder-linux
+bin/embedder-win.exe
