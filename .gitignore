@@ -2,3 +2,6 @@
 bin/embedder-darwin
 bin/embedder-linux
 bin/embedder-win.exe
+bin/text-embedder-darwin.gz
+bin/text-embedder-linux.gz
+bin/text-embedder-win.gz
