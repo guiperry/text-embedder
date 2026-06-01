@@ -87,7 +87,7 @@ sim := embed.CosineSimilarity(a, b) // returns float64 in [0, 1]
 ```
 ├── pkg/embed/              # Core embedding library (zero deps)
 │   └── embed.go            #   embed.Embed(), embed.CosineSimilarity()
-├── internal/api/           # Shared HTTP handlers + helpers
+├── pkg/api/                # Shared HTTP handlers + helpers
 │   ├── helpers.go          #   ServeHTTP handlers, types, CORS, writeJSON
 │   └── helpers_test.go
 ├── api/                    # Vercel serverless entry points

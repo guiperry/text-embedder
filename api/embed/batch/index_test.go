@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	api "github.com/guiperry/text-embedder/internal/api"
+	api "github.com/guiperry/text-embedder/pkg/api"
 )
 
 func TestBatchHandler(t *testing.T) {

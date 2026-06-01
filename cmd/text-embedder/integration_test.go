@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	api "github.com/guiperry/text-embedder/internal/api"
+	api "github.com/guiperry/text-embedder/pkg/api"
 )
 
 // newTestServer spins up a real TCP server on a random free port and returns

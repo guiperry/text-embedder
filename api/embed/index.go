@@ -3,7 +3,7 @@ package handler
 import (
 	"net/http"
 
-	api "github.com/guiperry/text-embedder/internal/api"
+	api "github.com/guiperry/text-embedder/pkg/api"
 	"github.com/guiperry/text-embedder/pkg/embed"
 )
 
