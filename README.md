@@ -1,4 +1,4 @@
-# text-embedder
+# G-Text Embedder
 
 A zero-dependency Go HTTP server that converts text into **bit-perfect deterministic**
 embedding vectors. Unlike standard neural models, this project uses the 
@@ -9,7 +9,7 @@ infinite semantic stability.
 
 ## Solving the "Three Walls" of AI Embeddings
 
-Traditional neural network embeddings (OpenAI, BERT, etc.) face three fundamental industry challenges. `text-embedder` is designed to solve them by moving from a "Neural" paradigm to a "Geometric Basis" paradigm.
+Traditional neural network embeddings (OpenAI, BERT, etc.) face three fundamental industry challenges. `G-Text Embedder` is designed to solve them by moving from a "Neural" paradigm to a "Geometric Basis" paradigm.
 
 ### 1. Hardware Jitter (The Precision Wall)
 *   **The Problem:** Floating-point addition is non-associative. GPUs finish calculations in random order, leading to tiny rounding errors. The same text on an NVIDIA H100 vs. an Apple M3 will produce slightly different vectors (e.g., a "drift" in the 8th decimal place).
@@ -27,7 +27,7 @@ Traditional neural network embeddings (OpenAI, BERT, etc.) face three fundamenta
 
 ## Deployment modes
 
-text-embedder runs in two modes:
+G-Text Embedder runs in two modes:
 
 | Mode | How | When to use |
 |:-----|:----|:------------|
@@ -52,7 +52,7 @@ npm i -g vercel
 vercel deploy --prod
 ```
 
-The deployment uses the same `internal/api` handlers as the local binary, wrapped in light Vercel `http.HandlerFunc` shims (`api/embed/index.go`, `api/health/index.go`, etc.). CORS, body-size limits, and OPTIONS preflight are handled per-endpoint.
+The deployment uses the same `pkg/api` handlers as the local binary, wrapped in light Vercel `http.HandlerFunc` shims (`api/embed/index.go`, `api/health/index.go`, etc.). CORS, body-size limits, and OPTIONS preflight are handled per-endpoint.
 
 **Serverless limits:**
 
@@ -103,7 +103,7 @@ sim := embed.CosineSimilarity(a, b) // returns float64 in [0, 1]
 │   └── health/
 │       ├── index.go        #   GET /health
 │       └── index_test.go
-├── cmd/text-embedder/      # Local binary (wraps internal/api)
+├── cmd/text-embedder/      # Local binary (wraps pkg/api)
 │   ├── main.go
 │   ├── main_test.go
 │   └── integration_test.go
